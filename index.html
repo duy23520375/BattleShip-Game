@@ -1,0 +1,1233 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>⚓ BATTLESHIP — CloudGO Game</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      fontFamily: { sans: ['"Be Vietnam Pro"', 'sans-serif'] },
+      colors: { abyss: { 950: '#020617', 900: '#050b1a', 800: '#0a1428' } },
+      boxShadow: { neon: '0 0 8px currentColor, 0 0 24px currentColor' }
+    }
+  }
+}
+</script>
+<style>
+  :root{
+    --t1:#3b82f6; --t2:#f59e0b; --t3:#e11d48; --t4:#10b981;
+  }
+  *{ -webkit-tap-highlight-color: transparent; }
+  html,body{ overflow-x:hidden; }
+  body{ font-family:'Be Vietnam Pro',sans-serif; }
+  ::-webkit-scrollbar{ width:8px; height:8px; }
+  ::-webkit-scrollbar-thumb{ background:#164e63; border-radius:4px; }
+
+  .glass{
+    background: linear-gradient(160deg, rgba(15,23,42,.72), rgba(2,6,23,.85));
+    backdrop-filter: blur(14px);
+    border: 1px solid rgba(148,163,184,.18);
+  }
+  .glass-cyan{
+    background: rgba(15,23,42,.5);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(6,182,212,.3);
+  }
+  .board-panel{
+    background: rgba(2,6,23,.25);
+    backdrop-filter: blur(2px);
+    border: 2px solid rgba(34,211,238,.6);
+    box-shadow: 0 25px 50px -12px rgba(0,0,0,.6);
+  }
+  .text-glow-white{ text-shadow: 0 1px 3px rgba(0,0,0,.9), 0 0 12px rgba(255,255,255,.35); }
+  .text-glow-amber{ text-shadow: 0 0 6px #f59e0b, 0 0 22px #b45309aa; }
+  .border-glow-blue{ box-shadow: 0 0 10px 0 rgba(59,130,246,.4), inset 0 0 20px rgba(59,130,246,.05); }
+
+  /* ---------- Turn banner ---------- */
+  @keyframes bannerGlow{
+    0%,100%{ filter: drop-shadow(0 0 4px var(--tc)) drop-shadow(0 0 10px var(--tc)); }
+    50%{ filter: drop-shadow(0 0 8px var(--tc)) drop-shadow(0 0 18px var(--tc)); }
+  }
+  .turn-banner{ animation: bannerGlow 2.2s ease-in-out infinite; }
+
+  /* ---------- Grid ---------- */
+  .board-grid{
+    display:grid;
+    grid-template-columns: 34px repeat(10, minmax(0,1fr));
+    grid-template-rows: 30px repeat(10, minmax(0,1fr));
+    gap: 3px;
+    aspect-ratio: 11/10;
+    width:100%;
+  }
+  .hdr{
+    display:flex; align-items:center; justify-content:center;
+    font-weight:900; color:#f8fafc; font-size: clamp(.62rem,1.6vw,1.05rem);
+    letter-spacing:.05em;
+    text-shadow: 0 1px 2px rgba(0,0,0,.95), 0 0 10px rgba(34,211,238,.6);
+  }
+  .cell{
+    position:relative;
+    background: rgba(255,255,255,.04);
+    border:1px solid rgba(34,211,238,.25);
+    border-radius:4px;
+    cursor: crosshair;
+    display:flex; align-items:center; justify-content:center;
+    overflow:hidden;
+    transition: border-color .12s, box-shadow .12s, background .15s;
+  }
+  .cell.playable:hover{
+    border-color:#67e8f9;
+    box-shadow: 0 0 10px 2px rgba(103,232,249,.55), inset 0 0 12px rgba(103,232,249,.25);
+    background: rgba(34,211,238,.20);
+  }
+  .cell.playable:hover::before, .cell.playable:hover::after{
+    content:''; position:absolute; border:2px solid #67e8f9; pointer-events:none;
+    animation: reticleFlicker 1s ease-in-out infinite;
+  }
+  .cell.playable:hover::before{ inset:2px; border-right:none; border-bottom:none; width:35%; height:35%; }
+  .cell.playable:hover::after{ inset:2px; border-left:none; border-top:none; width:35%; height:35%; left:auto; top:auto; right:2px; bottom:2px; }
+  @keyframes reticleFlicker{ 0%,100%{ opacity:1; } 50%{ opacity:.45; } }
+  .cell.disabled{ cursor: default; opacity:.98; }
+  .cell.miss{ background: rgba(148,163,184,.12); border-color: rgba(148,163,184,.35); }
+  .cell.hit{ background: rgba(239,68,68,.30); border-color: #f87171; }
+
+  .peg{ width:62%; height:62%; border-radius:9999px; position:relative; }
+  /* ---- White peg: 2 concentric rings — bright metallic outer bevel + recessed inner well ---- */
+  .peg-miss{
+    background: radial-gradient(circle at 35% 30%, #ffffff 0%, #e2e8f0 35%, #cbd5e1 60%, #94a3b8 100%);
+    box-shadow: 0 2px 5px rgba(0,0,0,.5), inset 0 1px 2px rgba(255,255,255,.9), inset 0 -3px 4px rgba(71,85,105,.5);
+    animation: pegPop .35s cubic-bezier(.34,1.56,.64,1);
+  }
+  .peg-miss::before{
+    content:''; position:absolute; inset:24%; border-radius:9999px;
+    background: radial-gradient(circle at 38% 32%, #94a3b8, #64748b 55%, #475569 100%);
+    box-shadow: inset 0 2px 5px rgba(0,0,0,.65), inset 0 -1px 2px rgba(226,232,240,.25), 0 1px 0 rgba(255,255,255,.4);
+  }
+  .peg-miss::after{
+    content:''; position:absolute; inset:-140%; border:2px solid rgba(148,197,255,.55); border-radius:9999px;
+    animation: ripple 1.1s ease-out 1;
+  }
+  /* ---- Red peg: 2 concentric rings — glossy red outer + glowing dark-red inner core ---- */
+  .peg-hit{
+    background: radial-gradient(circle at 35% 30%, #fecaca 0%, #f87171 35%, #ef4444 65%, #b91c1c 100%);
+    box-shadow: 0 0 10px 3px rgba(248,113,113,.7), 0 2px 5px rgba(0,0,0,.5), inset 0 1px 2px rgba(255,255,255,.6), inset 0 -3px 4px rgba(127,29,29,.5);
+    animation: pegPop .35s cubic-bezier(.34,1.56,.64,1);
+  }
+  .peg-hit::before{
+    content:''; position:absolute; inset:24%; border-radius:9999px;
+    background: radial-gradient(circle at 38% 32%, #f87171, #dc2626 55%, #7f1d1d 100%);
+    box-shadow: 0 0 8px 2px rgba(239,68,68,.85), inset 0 2px 4px rgba(0,0,0,.5);
+    animation: hitPulse 1.4s ease-in-out infinite .35s;
+  }
+  .peg-hit::after{
+    content:''; position:absolute; inset:-60%; border-radius:9999px;
+    background: radial-gradient(circle, rgba(251,191,36,.55), transparent 70%);
+    animation: hitPulse 1.4s ease-in-out infinite;
+  }
+  @keyframes pegPop{ 0%{ transform:scale(0); } 70%{ transform:scale(1.25); } 100%{ transform:scale(1); } }
+  @keyframes ripple{ 0%{ opacity:.9; transform:scale(.4);} 100%{ opacity:0; transform:scale(1.6);} }
+  @keyframes hitPulse{ 0%,100%{ opacity:.75; transform:scale(1);} 50%{ opacity:1; transform:scale(1.1);} }
+
+  /* ---------- Ship overlay (silver metallic top-down hull) ---------- */
+  .ship-overlay{
+    position:relative; pointer-events:none; z-index:5;
+    border-radius:6px;
+    border:2px solid #fb923c;
+    box-shadow: 0 0 16px 3px rgba(251,146,60,.75), 0 0 36px 8px rgba(239,68,68,.35), inset 0 0 18px rgba(100,116,139,.2);
+    animation: shipReveal .5s ease-out, shipBurn 2.2s ease-in-out infinite .5s;
+    background: rgba(30,41,59,.2);
+  }
+  @keyframes shipReveal{ 0%{ opacity:0; transform:scale(.8);} 100%{ opacity:1; transform:scale(1);} }
+  @keyframes shipBurn{ 0%,100%{ box-shadow: 0 0 16px 3px rgba(251,146,60,.75), 0 0 36px 8px rgba(239,68,68,.35);} 50%{ box-shadow: 0 0 26px 6px rgba(251,146,60,1), 0 0 54px 14px rgba(239,68,68,.6);} }
+  .ship-overlay svg{ width:100%; height:100%; display:block; }
+
+  /* ---------- Ghost mode ---------- */
+  .ghost-cell{ outline: 2px dashed rgba(16,185,129,.85) !important; outline-offset:-2px; }
+  .ghost-cell::before{
+    content:'⚓'; position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    font-size:1.1rem; color:#10b981; opacity:.85; text-shadow:0 0 6px #10b981; pointer-events:none;
+  }
+
+  /* ---------- Countdown urgency ---------- */
+  @keyframes urgentPulse{ 0%,100%{ transform:scale(1); } 50%{ transform:scale(1.05); } }
+  .urgent{ animation: urgentPulse .5s ease-in-out infinite; color:#ef4444 !important; }
+
+  /* ---------- Cutscene ---------- */
+  .cutscene{
+    position:fixed; inset:0; z-index:100; display:flex; align-items:center; justify-content:center;
+    background: radial-gradient(circle at center, rgba(30,0,0,.5), #000000 78%);
+  }
+  .cutscene .bar{ position:absolute; left:0; right:0; height:14vh; background:#000; }
+  .cutscene .bar.top{ top:0; border-bottom:3px solid #ef4444; box-shadow:0 6px 30px rgba(239,68,68,.7); }
+  .cutscene .bar.bot{ bottom:0; border-top:3px solid #ef4444; box-shadow:0 -6px 30px rgba(239,68,68,.7); }
+  .cutscene .laser{ position:absolute; left:0; right:0; height:3px; background:linear-gradient(90deg,transparent,#ef4444,#fff,#ef4444,transparent); animation: laserSweep 1.1s linear infinite; }
+  @keyframes laserSweep{ 0%{ top:16%; opacity:0; } 10%{opacity:1;} 90%{opacity:1;} 100%{ top:82%; opacity:0; } }
+  @keyframes textPop3D{
+    0%{ transform: scale(.2) rotateX(60deg); opacity:0; }
+    55%{ transform: scale(1.18) rotateX(0deg); opacity:1; }
+    75%{ transform: scale(.96); }
+    100%{ transform: scale(1); }
+  }
+  .sunk-title{
+    font-weight:900; letter-spacing:.03em; text-align:center; perspective:600px;
+    font-size: clamp(2.2rem, 7vw, 5.2rem);
+    color:#fff; -webkit-text-stroke: 2px #7f1d1d;
+    text-shadow: 0 0 10px #ef4444, 0 0 30px #f97316, 0 6px 0 #7f1d1d, 0 10px 18px rgba(0,0,0,.8);
+    animation: textPop3D .55s cubic-bezier(.34,1.56,.64,1);
+  }
+  .sunk-sub{ font-size:clamp(1rem,3vw,1.6rem); font-weight:800; color:#fde68a; text-shadow:0 0 12px #f59e0b; margin-top:.5rem; text-align:center; animation: textPop3D .7s .1s cubic-bezier(.34,1.56,.64,1) backwards; }
+
+  @keyframes shake{
+    10%,90%{ transform: translate3d(-1px,-2px,0); }
+    20%,80%{ transform: translate3d(3px,3px,0); }
+    30%,50%,70%{ transform: translate3d(-6px,3px,0) rotate(-.4deg); }
+    40%,60%{ transform: translate3d(6px,-3px,0) rotate(.4deg); }
+  }
+  .shake{ animation: shake .55s cubic-bezier(.36,.07,.19,.97) both; }
+
+  /* ---------- Timer progress ---------- */
+  .timer-bar{ transition: width 1s linear, background-color .3s; }
+
+  /* ---------- Modal fade ---------- */
+  @keyframes fadeScale{ from{opacity:0; transform:scale(.92);} to{opacity:1; transform:scale(1);} }
+  .modal-pop{ animation: fadeScale .25s ease-out; }
+
+  .fleet-card.sunk{ opacity:.55; filter:grayscale(.4); }
+
+  input.team-name-input{ background:transparent; border-bottom:2px dashed currentColor; outline:none; width:100%; text-align:center; }
+</style>
+</head>
+<body class="min-h-screen text-slate-100 font-sans relative">
+
+<!-- Dynamic Video Background -->
+<div class="fixed inset-0 w-full h-full -z-50 overflow-hidden pointer-events-none bg-slate-950">
+  <video
+    id="bg-video"
+    autoplay
+    loop
+    muted
+    playsinline
+    class="w-full h-full object-cover brightness-[0.75] contrast-[1.05]"
+  >
+    <source src="background.mp4" type="video/mp4">
+  </video>
+  <!-- Lớp phủ tối nhẹ để bàn cờ và chữ luôn nổi bật 100% -->
+  <div class="absolute inset-0 bg-slate-950/35 backdrop-blur-[1px]"></div>
+</div>
+
+<div class="relative z-10">
+<!-- ===================== HEADER ===================== -->
+<header class="sticky top-0 z-30 glass-cyan border-b border-cyan-500/30 px-3 md:px-6 py-2">
+  <div class="flex items-center justify-between gap-3 flex-wrap">
+    <div class="flex items-center gap-2">
+      <i data-lucide="anchor" class="w-6 h-6 md:w-8 md:h-8 text-blue-400 text-glow-white"></i>
+      <div>
+        <h1 class="font-black text-base md:text-2xl tracking-wide text-white text-glow-white leading-none">BATTLESHIP</h1>
+        <p class="text-[10px] md:text-xs text-blue-300/70 font-semibold tracking-widest">CLOUDGO CORPORATE GAME SHOW</p>
+      </div>
+    </div>
+
+    <div id="turnBanner" class="turn-banner glass-cyan rounded-xl px-4 md:px-6 py-2 border-2 flex items-center gap-3" style="--tc:#3b82f6; border-color:#3b82f6;">
+      <i data-lucide="crosshair" class="w-5 h-5" id="turnIcon" style="color:#3b82f6"></i>
+      <div class="text-center leading-tight">
+        <p class="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Đang đến lượt</p>
+        <p id="turnTeamName" class="font-black text-lg md:text-2xl" style="color:#3b82f6">ĐỘI 1</p>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-1.5 md:gap-2">
+      <button id="btnSudden" class="hidden items-center gap-1.5 bg-rose-600/90 hover:bg-rose-500 text-white font-bold px-2.5 py-2 rounded-lg text-xs md:text-sm shadow-neon border border-rose-400/60" style="color:#fecdd3">
+        <i data-lucide="flame" class="w-4 h-4"></i><span class="hidden md:inline">Câu hỏi phụ</span>
+      </button>
+      <button id="btnMute" title="Bật/Tắt âm thanh" class="p-2 rounded-lg glass-cyan border border-cyan-500/30 hover:border-cyan-300 text-cyan-300"><i data-lucide="volume-2" class="w-4 h-4 md:w-5 md:h-5"></i></button>
+      <button id="btnFullscreen" title="Toàn màn hình" class="p-2 rounded-lg glass-cyan border border-cyan-500/30 hover:border-cyan-300 text-cyan-300"><i data-lucide="maximize" class="w-4 h-4 md:w-5 md:h-5"></i></button>
+      <button id="btnReset" title="Ván đấu mới" class="p-2 rounded-lg glass-cyan border border-red-500/40 hover:border-red-300 text-red-300"><i data-lucide="rotate-ccw" class="w-4 h-4 md:w-5 md:h-5"></i></button>
+    </div>
+  </div>
+
+  <!-- Scoreboard -->
+  <div id="scoreboard" class="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2"></div>
+</header>
+
+<!-- ===================== MAIN ===================== -->
+<main class="max-w-[1500px] mx-auto px-3 md:px-6 py-4 grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-4">
+  <!-- Board -->
+  <section id="boardWrap" class="board-panel rounded-xl p-3 md:p-5">
+    <div id="board" class="board-grid"></div>
+  </section>
+
+  <!-- Side panel -->
+  <aside class="flex flex-col gap-4">
+    <div class="glass-cyan rounded-2xl p-4 border border-amber-500/30">
+      <h2 class="flex items-center gap-2 font-black text-amber-300 text-glow-amber text-sm tracking-wide mb-3">
+        <i data-lucide="ship" class="w-4 h-4"></i> TÌNH TRẠNG HẠM ĐỘI
+      </h2>
+      <div id="fleetPanel" class="space-y-2.5"></div>
+    </div>
+
+    <div class="glass-cyan rounded-2xl p-4 border border-cyan-500/30">
+      <h2 class="flex items-center gap-2 font-black text-blue-300 text-sm tracking-wide mb-3">
+        <i data-lucide="radar" class="w-4 h-4"></i> RADAR TỔNG QUAN
+      </h2>
+      <div id="miniRadar" class="grid grid-cols-10 gap-[2px] w-full aspect-square"></div>
+    </div>
+  </aside>
+</main>
+
+<div class="h-6"></div>
+
+<!-- ===================== QUESTION MODAL ===================== -->
+<div id="questionModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/80 backdrop-blur-sm p-3">
+  <div class="modal-pop glass w-full max-w-2xl rounded-2xl border-2 border-blue-400/50 p-5 md:p-7 relative overflow-hidden">
+    <div class="flex items-center justify-between mb-3">
+      <span id="qDifficultyBadge" class="text-[10px] md:text-xs font-black uppercase tracking-widest px-2.5 py-1 rounded-full border">—</span>
+      <span id="qCoordBadge" class="text-xs md:text-sm font-black text-blue-300">TỌA ĐỘ —</span>
+    </div>
+
+    <p id="qTimerLabel" class="text-center text-4xl md:text-5xl font-black text-blue-300 mb-1 tracking-wider">30</p>
+    <div class="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden mb-4">
+      <div id="qTimerBar" class="timer-bar h-full bg-gradient-to-r from-blue-400 to-emerald-400" style="width:100%"></div>
+    </div>
+
+    <div class="text-center mb-2">
+      <p class="text-[11px] uppercase tracking-widest text-amber-400 font-bold mb-1">Câu hỏi tác chiến</p>
+      <p id="qText" class="text-lg md:text-2xl font-bold text-white leading-snug whitespace-pre-line">—</p>
+    </div>
+
+    <div id="qAnswerReveal" class="hidden mt-3 text-center bg-emerald-950/40 border border-emerald-500/40 rounded-xl p-3">
+      <p class="text-[11px] uppercase tracking-widest text-emerald-400 font-bold">Đáp án</p>
+      <p id="qAnswerText" class="text-lg md:text-xl font-black text-emerald-300 mt-1">—</p>
+    </div>
+
+    <!-- MC judge phase A -->
+    <div id="qPhaseJudge" class="mt-5 grid grid-cols-2 gap-3">
+      <button id="btnCorrect" class="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3 rounded-xl text-sm md:text-base shadow-lg shadow-emerald-900/50">
+        <i data-lucide="check-circle-2" class="w-5 h-5"></i> ĐÚNG (+100đ)
+      </button>
+      <button id="btnWrong" class="flex items-center justify-center gap-2 bg-red-700 hover:bg-red-600 text-white font-black py-3 rounded-xl text-sm md:text-base shadow-lg shadow-red-900/50">
+        <i data-lucide="x-circle" class="w-5 h-5"></i> SAI / HẾT GIỜ
+      </button>
+    </div>
+
+    <!-- Steal phase B -->
+    <div id="qPhaseSteal" class="hidden mt-5">
+      <p class="text-center text-red-400 font-black uppercase tracking-widest text-sm mb-3 flex items-center justify-center gap-2"><i data-lucide="siren" class="w-4 h-4"></i> Quyền cướp điểm (+50đ)</p>
+      <div id="stealTeamButtons" class="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3"></div>
+      <button id="btnNoSteal" class="w-full flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-600 text-white font-black py-2.5 rounded-xl text-sm">
+        <i data-lucide="eye" class="w-4 h-4"></i> Hiện đáp án / 0đ
+      </button>
+    </div>
+
+    <!-- Continue after reveal -->
+    <div id="qPhaseContinue" class="hidden mt-5">
+      <button id="btnContinue" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-3 rounded-xl text-sm md:text-base">TIẾP TỤC ▶</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== SHIP SUNK CUTSCENE ===================== -->
+<div id="cutscene" class="cutscene hidden">
+  <div class="bar top"></div><div class="bar bot"></div><div class="laser"></div>
+  <div class="relative z-10 px-4">
+    <p class="sunk-title">💥 SHIP SUNK! 💥</p>
+    <p id="cutsceneSub" class="sunk-sub">HẠ GỤC —</p>
+  </div>
+</div>
+
+<!-- ===================== VICTORY MODAL ===================== -->
+<div id="victoryModal" class="fixed inset-0 z-[60] hidden items-center justify-center bg-black/85 backdrop-blur-sm p-3">
+  <div class="modal-pop glass w-full max-w-xl rounded-2xl border-2 border-amber-400/60 p-6 md:p-8 text-center">
+    <i data-lucide="trophy" class="w-14 h-14 mx-auto text-amber-300 text-glow-amber mb-2"></i>
+    <p class="text-sm uppercase tracking-widest text-amber-400 font-bold">Toàn bộ hạm đội đã bị đánh chìm</p>
+    <h2 class="text-3xl md:text-4xl font-black text-white mt-1 mb-4">KẾT THÚC TRẬN ĐẤU</h2>
+    <div id="victoryRanking" class="space-y-2 text-left mb-4"></div>
+    <div id="victoryTieNotice" class="hidden mb-4 text-red-300 font-bold text-sm bg-red-950/50 border border-red-500/40 rounded-lg p-3">Có đội hòa điểm ở ngôi đầu — hãy kích hoạt Câu hỏi phụ!</div>
+    <button id="btnCloseVictory" class="bg-blue-600 hover:bg-blue-500 text-white font-black px-6 py-2.5 rounded-xl">ĐÓNG</button>
+  </div>
+</div>
+
+<!-- ===================== CÂU HỎI PHỤ MODAL ===================== -->
+<div id="suddenModal" class="fixed inset-0 z-[60] hidden items-center justify-center bg-black/85 backdrop-blur-sm p-3">
+  <div class="modal-pop glass w-full max-w-xl rounded-2xl border-2 border-red-500/60 p-6 md:p-8 text-center">
+    <i data-lucide="flame" class="w-12 h-12 mx-auto text-red-400 mb-2"></i>
+    <h2 class="text-2xl md:text-3xl font-black text-red-300 mb-1">🔥 CÂU HỎI PHỤ</h2>
+    <p class="text-xs uppercase tracking-widest text-slate-400 font-bold mb-4">Các đội đồng điểm ở ngôi đầu</p>
+    <p id="suddenQuestion" class="text-lg md:text-xl font-bold text-white mb-3">—</p>
+    <div id="suddenAnswerReveal" class="hidden mb-4 bg-emerald-950/40 border border-emerald-500/40 rounded-xl p-3">
+      <p class="text-[11px] uppercase tracking-widest text-emerald-400 font-bold">Đáp án</p>
+      <p id="suddenAnswerText" class="text-lg font-black text-emerald-300 mt-1">—</p>
+    </div>
+    <button id="btnRevealSudden" class="mb-3 bg-slate-700 hover:bg-slate-600 text-white font-bold px-4 py-2 rounded-xl text-sm">Hiện đáp án</button>
+    <p class="text-xs uppercase tracking-widest text-amber-400 font-bold mb-2">Chọn đội chiến thắng chung cuộc</p>
+    <div id="suddenTeamButtons" class="grid grid-cols-2 gap-2"></div>
+  </div>
+</div>
+
+<!-- ===================== RESET CONFIRM ===================== -->
+<div id="resetModal" class="fixed inset-0 z-[70] hidden items-center justify-center bg-black/85 backdrop-blur-sm p-3">
+  <div class="modal-pop glass w-full max-w-sm rounded-2xl border-2 border-red-500/60 p-6 text-center">
+    <i data-lucide="triangle-alert" class="w-10 h-10 mx-auto text-red-400 mb-2"></i>
+    <h3 class="font-black text-lg text-white mb-1">Bắt đầu ván đấu mới?</h3>
+    <p class="text-sm text-slate-400 mb-4">Toàn bộ điểm số và bàn cờ hiện tại sẽ bị xóa vĩnh viễn.</p>
+    <div class="grid grid-cols-2 gap-3">
+      <button id="btnResetCancel" class="bg-slate-700 hover:bg-slate-600 text-white font-bold py-2.5 rounded-xl">Hủy</button>
+      <button id="btnResetConfirm" class="bg-red-600 hover:bg-red-500 text-white font-bold py-2.5 rounded-xl">Xác nhận</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== GHOST MODE INDICATOR ===================== -->
+<div id="ghostIndicator" class="hidden fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[80] pointer-events-none">
+  <div class="bg-emerald-950/80 border-2 border-emerald-400 text-emerald-300 font-black px-6 py-3 rounded-xl text-sm tracking-widest shadow-neon">👻 GHOST MODE — CHỈ MC THẤY</div>
+</div>
+
+<!-- ===================== INTRO / START MODAL ===================== -->
+<div id="introModal" class="fixed inset-0 z-[200] flex items-center justify-center bg-black/90 backdrop-blur-md p-3">
+  <div class="modal-pop glass w-full max-w-2xl rounded-2xl border-2 border-cyan-400/60 p-6 md:p-9 text-center border-glow-blue">
+    <i data-lucide="anchor" class="w-12 h-12 mx-auto text-cyan-300 text-glow-white mb-2"></i>
+    <h1 class="font-black text-2xl md:text-4xl tracking-wide text-white text-glow-white mb-1">⚓ BATTLESHIP — CLOUDGO GAME</h1>
+    <p class="text-xs md:text-sm text-cyan-300/80 font-semibold tracking-widest uppercase mb-5">Cách thức tính điểm</p>
+
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-4 text-left">
+      <div class="glass-cyan rounded-xl p-3 border border-emerald-500/30">
+        <p class="font-black text-emerald-300 text-sm md:text-base">🎯 Trả lời đúng (30s)</p>
+        <p class="text-white font-bold text-lg md:text-xl">+100 điểm</p>
+        <p class="text-[11px] text-slate-400">Giữ quyền bắn tiếp</p>
+      </div>
+      <div class="glass-cyan rounded-xl p-3 border border-amber-500/30">
+        <p class="font-black text-amber-300 text-sm md:text-base">⚡ Cướp điểm đúng</p>
+        <p class="text-white font-bold text-lg md:text-xl">+50 điểm</p>
+        <p class="text-[11px] text-slate-400">Chuyển lượt theo vòng tròn</p>
+      </div>
+      <div class="glass-cyan rounded-xl p-3 border border-slate-500/30">
+        <p class="font-black text-slate-300 text-sm md:text-base">💥 Trượt / Sai</p>
+        <p class="text-white font-bold text-lg md:text-xl">0 điểm</p>
+        <p class="text-[11px] text-slate-400">Chuyển lượt</p>
+      </div>
+    </div>
+
+    <div class="glass-cyan rounded-xl p-4 border border-cyan-500/30 mb-6 text-left">
+      <p class="font-black text-cyan-300 text-sm md:text-base mb-2 flex items-center gap-2">🏆 Điểm thưởng hạ gục tàu</p>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 text-sm md:text-base">
+        <p class="text-white flex justify-between border-b border-slate-700/50 pb-1"><span>🚢 Tàu Cao Tốc (2 ô - Khó nhất)</span><span class="font-black text-amber-300">+400đ </span></p>
+        <p class="text-white flex justify-between border-b border-slate-700/50 pb-1"><span>🚢 Tàu Ngầm (3 ô - Trung bình)</span><span class="font-black text-cyan-300">+300đ</span></p>
+        <p class="text-white flex justify-between border-b border-slate-700/50 pb-1"><span>🚢 Tàu Tuần Tra (3 ô - Trung bình)</span><span class="font-black text-cyan-300">+300đ</span></p>
+        <p class="text-white flex justify-between border-b border-slate-700/50 pb-1"><span>🚢 Tàu Chiến (4 ô - Dễ)</span><span class="font-black text-emerald-300">+200đ</span></p>
+        <p class="text-white flex justify-between"><span>🚢 Tàu Sân Bay (5 ô - Rất dễ / To nhất)</span><span class="font-black text-slate-300">+100đ</span></p>
+      </div>
+    </div>
+
+    <div class="glass-cyan rounded-xl p-4 border border-fuchsia-500/30 mb-6 text-left">
+      <p class="font-black text-fuchsia-300 text-sm md:text-base mb-2 flex items-center gap-2">🔀 Chọn thứ tự các đội bắt đầu chơi</p>
+      <div id="introOrderList" class="grid grid-cols-1 sm:grid-cols-2 gap-2"></div>
+    </div>
+
+    <button id="btnStartGame" class="w-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-black text-lg md:text-2xl py-4 rounded-2xl shadow-neon border-2 border-cyan-300/70 tracking-wide">
+       BẮT ĐẦU
+    </button>
+  </div>
+</div>
+</div>
+
+<script>
+/* =====================================================================
+   GAME DATA — embedded from questions.json (no fetch, avoids file:// CORS)
+   Sunk-bonus overridden per director's brief: smaller ship = higher bonus.
+   ===================================================================== */
+const GAME_DATA = {
+  "fleet": [
+    {
+      "shipId": "ship_2_cell", "name": "Tàu Cao Tốc", "difficulty": "Khó", "sunkBonus": 400,
+      "cells": [
+        { "coord": "J4", "question": "Tổng thành viên văn phòng trong công ty hiện nay?", "answer": "48" },
+        { "coord": "J5", "question": "4 giá trị cốt lõi của công ty? (Gợi ý: Chân thành & ..., ... & Chất lượng, Sáng tạo & ..., ... & Cống hiến)", "answer": "Tử tế - Tốc độ - Khác biệt - Đoàn kết" }
+      ]
+    },
+    {
+      "shipId": "ship_3_cell_1", "name": "Tàu Ngầm", "difficulty": "Trung bình", "sunkBonus": 300,
+      "cells": [
+        { "coord": "F2", "question": "Đoạn câu lệnh hoặc văn bản mô tả mà người dùng nhập vào để \"ra lệnh\" cho AI (như ChatGPT, Gemini) tạo ra kết quả mong muốn được gọi là gì?", "answer": "Prompt" },
+        { "coord": "G2", "question": "Trong phòng có 10 ngọn nến đang cháy, gió thổi tắt 3 ngọn. Bạn đóng kín cửa lại. Hỏi đến sáng hôm sau trong phòng còn lại bao nhiêu ngọn nến?", "answer": "3 ngọn nến (vì 7 ngọn kia đã cháy hết thành sáp)" },
+        { "coord": "H2", "question": "Trong một năm dương lịch thông thường, có chính xác bao nhiêu tháng có 31 ngày?", "answer": "7 tháng (Tháng 1, 3, 5, 7, 8, 10, 12)" }
+      ]
+    },
+    {
+      "shipId": "ship_3_cell_2", "name": "Tàu Tuần Tra", "difficulty": "Trung bình", "sunkBonus": 300,
+      "cells": [
+        { "coord": "H7", "question": "Đơn vị nhỏ nhất cấu thành từ ngữ/ký tự mà các mô hình AI (như ChatGPT, Gemini) dùng để xử lý văn bản và tính phí được gọi là gì?", "answer": "Token" },
+        { "coord": "H8", "question": "Cơ quan nội tạng nào duy nhất trong cơ thể con người có khả năng tự tái sinh (tự phục hồi lại kích thước ban đầu) sau khi bị cắt bỏ một phần?", "answer": "Lá Gan" },
+        { "coord": "H9", "question": "Trong ngành AI, dòng mô hình ngôn ngữ nổi tiếng thế giới kết hợp giữa 3 khái niệm cốt lõi: \"Tạo sinh\" (Generative), \"Được huấn luyện trước\" (Pre-trained) và \"Kiến trúc chuyển đổi\" (Transformer). Cụm từ viết tắt gồm 3 chữ cái ghép từ các từ này là gì?", "answer": "GPT" }
+      ]
+    },
+    {
+      "shipId": "ship_4_cell", "name": "Tàu Chiến", "difficulty": "Dễ", "sunkBonus": 200,
+      "cells": [
+        { "coord": "D4", "question": "Điền vế còn thiếu vào câu ca dao quen thuộc:\n\"Ăn quả nhớ kẻ trồng cây,\nĂn khoai nhớ kẻ...\"?", "answer": "Cho dây mà trồng" },
+        { "coord": "D5", "question": "Điền từ còn thiếu trong câu ca dao:\n\"Đường vô xứ Nghệ quanh quanh,\nNon xanh nước biếc như tranh...\"", "answer": "Họa đồ" },
+        { "coord": "D6", "question": "Vịnh biển nào của Việt Nam đã 2 lần được UNESCO công nhận là Di sản Thiên nhiên Thế giới?", "answer": "Vịnh Hạ Long" },
+        { "coord": "D7", "question": "Một số tháng trong năm có 31 ngày, một số tháng có 30 ngày. Hỏi có bao nhiêu tháng trong năm có ít nhất 28 ngày?", "answer": "Tất cả 12 tháng (tháng nào cũng có ngày 28)" }
+      ]
+    },
+    {
+      "shipId": "ship_5_cell", "name": "Tàu Sân Bay", "difficulty": "Rất dễ", "sunkBonus": 100,
+      "cells": [
+        { "coord": "B5", "question": "Tỉnh / Thành phố nào ở Việt Nam được mệnh danh là \"Thành phố ngàn hoa\"?", "answer": "Đà Lạt (Lâm Đồng)" },
+        { "coord": "B6", "question": "Đội tuyển bóng đá quốc gia nào đang giữ kỷ lục vô địch World Cup nhiều lần nhất trong lịch sử?", "answer": "Brazil" },
+        { "coord": "B7", "question": "Kim tự tháp Giza vĩ đại — một trong 7 kỳ quan thế giới cổ đại duy nhất còn tồn tại đến ngày nay — nằm ở quốc gia nào?", "answer": "Ai Cập" },
+        { "coord": "B8", "question": "Ngọn núi nào cao nhất Việt Nam và được mệnh danh là \"Nóc nhà của Đông Dương\"?", "answer": "Fansipan (Phan Xi Păng)" },
+        { "coord": "B9", "question": "Hành tinh nào trong Hệ Mặt Trời được mệnh danh là \"Hành tinh Đỏ\"?", "answer": "Sao Hỏa" }
+      ]
+    }
+  ],
+  "tieBreaker": {
+    "question": "CloudGO (tiền thân là OnlineCRM) được chính thức thành lập vào ngày, tháng, năm nào?",
+    "answer": "23/12/2010 (hoặc ngày 23 tháng 12)"
+  }
+};
+
+/* =====================================================================
+   HELPERS
+   ===================================================================== */
+const ROWS = ['A','B','C','D','E','F','G','H','I','J'];
+const coordToRC = (coord) => ({ r: coord.charCodeAt(0) - 65, c: parseInt(coord.slice(1), 10) - 1 });
+
+const TEAM_COLORS = ['#3b82f6', '#f59e0b', '#e11d48', '#10b981'];
+
+/* Build fast lookup + ship metadata (orientation / bbox) */
+const CELL_MAP = {};
+const SHIPS = GAME_DATA.fleet.map(ship => {
+  const rcs = ship.cells.map(c => ({ ...coordToRC(c.coord), coord: c.coord, question: c.question, answer: c.answer }));
+  const rows = rcs.map(x => x.r), cols = rcs.map(x => x.c);
+  const minR = Math.min(...rows), maxR = Math.max(...rows);
+  const minC = Math.min(...cols), maxC = Math.max(...cols);
+  const orientation = (maxR - minR) > (maxC - minC) ? 'vertical' : 'horizontal';
+  const length = ship.cells.length;
+  const shipObj = {
+    id: ship.shipId, name: ship.name, difficulty: ship.difficulty, sunkBonus: ship.sunkBonus,
+    cells: rcs, minR, maxR, minC, maxC, orientation, length,
+    hitSet: new Set(), sunk: false
+  };
+  rcs.forEach(rc => {
+    CELL_MAP[rc.coord] = { shipId: ship.shipId, question: rc.question, answer: rc.answer, shipName: ship.name };
+  });
+  return shipObj;
+});
+const TOTAL_SHIP_CELLS = SHIPS.reduce((s, sh) => s + sh.length, 0);
+
+/* =====================================================================
+   STATE
+   ===================================================================== */
+const state = {
+  teams: [0,1,2,3].map(i => ({ name: `ĐỘI ${i+1}`, score: 0 })),
+  turnOrder: [0,1,2,3],   // customizable play order, chosen on the intro screen
+  currentTeamIndex: 0,
+  shots: {},              // coord -> 'hit' | 'miss'
+  hitCount: 0,
+  muted: false,
+  ghost: false,
+  gameOver: false,
+  awaitingModal: true,    // blocks board while intro/question modal / cutscene active
+  timer: { remaining: 30, handle: null },
+};
+
+/* =====================================================================
+   AUDIO ENGINE — real mp3 files from sounds/ with Web Audio synth fallback
+   ===================================================================== */
+const Audio_ = (() => {
+  let ctx = null, master = null, noiseBuf = null;
+  function ensure() {
+    if (!ctx) {
+      ctx = new (window.AudioContext || window.webkitAudioContext)();
+      master = ctx.createGain(); master.gain.value = 0.9; master.connect(ctx.destination);
+      const len = ctx.sampleRate * 1.0;
+      noiseBuf = ctx.createBuffer(1, len, ctx.sampleRate);
+      const d = noiseBuf.getChannelData(0);
+      for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    }
+    if (ctx.state === 'suspended') ctx.resume();
+    return ctx;
+  }
+  ['click','keydown','touchstart'].forEach(ev => window.addEventListener(ev, () => ensure(), { once: false, passive: true }));
+
+  function tone(freq, dur, type='sine', vol=0.3, delay=0, freqEnd=null) {
+    const c = ensure(); const t0 = c.currentTime + delay;
+    const osc = c.createOscillator(); const g = c.createGain();
+    osc.type = type; osc.frequency.setValueAtTime(freq, t0);
+    if (freqEnd !== null) osc.frequency.exponentialRampToValueAtTime(Math.max(freqEnd,1), t0 + dur);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(vol, t0 + 0.015);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    osc.connect(g); g.connect(master);
+    osc.start(t0); osc.stop(t0 + dur + 0.02);
+  }
+  function noise(dur, vol=0.4, delay=0, filterFreq=1200, filterType='lowpass') {
+    const c = ensure(); const t0 = c.currentTime + delay;
+    const src = c.createBufferSource(); src.buffer = noiseBuf;
+    const g = c.createGain(); const f = c.createBiquadFilter();
+    f.type = filterType; f.frequency.setValueAtTime(filterFreq, t0);
+    g.gain.setValueAtTime(vol, t0);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    src.connect(f); f.connect(g); g.connect(master);
+    src.start(t0); src.stop(t0 + dur + 0.02);
+  }
+
+  const synth = {
+    ping() { tone(1100, .18, 'sine', .25, 0, 700); tone(1650, .12, 'sine', .12, .05); },
+    hit() { synth.ping(); noise(.5, .55, .12, 1800, 'lowpass'); tone(90, .35, 'sawtooth', .35, .12, 30); tone(55, .5, 'sine', .3, .13, 20); },
+    miss() { noise(.4, .35, 0, 900); tone(180, .3, 'sine', .12, .02, 60); },
+    correct() { tone(523.25, .18, 'triangle', .28, 0); tone(659.25, .18, 'triangle', .28, .1); tone(783.99, .3, 'triangle', .3, .2); },
+    wrong() { tone(160, .55, 'square', .3, 0, 90); tone(160, .3, 'square', .22, .55, 90); },
+    tick() { tone(950, .07, 'square', .12, 0); },
+    sunk() {
+      for (let i = 0; i < 4; i++) tone(i % 2 === 0 ? 700 : 950, .35, 'sawtooth', .22, i * .35);
+      noise(.9, .6, 0, 500); tone(60, .8, 'sine', .5, 0, 18); tone(40, 1.0, 'sine', .35, .05, 15);
+    },
+    victory() {
+      /* Phrase 1: brass fanfare hits building up (0.00 - 1.90s) */
+      const hits = [
+        [523.25,0.00,0.20],[523.25,0.24,0.20],[523.25,0.48,0.20],
+        [659.25,0.72,0.42],
+        [783.99,1.20,0.20],[880.00,1.44,0.20],[1046.50,1.68,0.55]
+      ];
+      hits.forEach(([f,d,dur]) => { tone(f, dur, 'triangle', .32, d); tone(f/2, dur, 'sawtooth', .12, d); });
+      /* Phrase 2: rising triumphant echo (2.30 - 3.75s) */
+      const echo = [
+        [783.99,2.30,0.20],[880.00,2.54,0.20],[1046.50,2.78,0.20],[1318.50,3.02,0.70]
+      ];
+      echo.forEach(([f,d,dur]) => { tone(f, dur, 'triangle', .3, d); tone(f/2, dur, 'sawtooth', .1, d); });
+      /* Phrase 3: descending flourish run (3.80 - 4.55s) */
+      const run = [1318.50,1174.70,1046.50,987.77];
+      run.forEach((f,i) => tone(f, .17, 'square', .22, 3.80 + i*0.18));
+      /* Finale: big sustained major chord + cymbal swell (4.55 - 5.90s) */
+      [523.25,659.25,783.99,1046.50,1318.50].forEach(f => tone(f, 1.35, 'triangle', .26, 4.55));
+      tone(261.63, 1.4, 'sawtooth', .2, 4.55);
+      noise(1.1, .28, 4.55, 4000, 'highpass');
+    }
+  };
+
+  /* Try real mp3 first; on load/playback failure, seamlessly fall back to synth. */
+  const FILES = {
+    hit: 'sounds/hit.mp3', miss: 'sounds/miss.mp3',
+    correct: 'sounds/correct.mp3', wrong: 'sounds/wrong-answer.mp3',
+    tick: 'sounds/tick.mp3', sunk: 'sounds/sunk.mp3', victory: 'sounds/victory.mp3'
+  };
+  function play(name) {
+    if (state.muted) return;
+    ensure();
+    const src = FILES[name];
+    let fell = false;
+    const fallback = () => { if (!fell) { fell = true; synth[name](); } };
+    try {
+      const a = new window.Audio(src);
+      a.volume = name === 'tick' ? 0.5 : 0.85;
+      a.addEventListener('error', fallback);
+      const p = a.play();
+      if (p && typeof p.catch === 'function') p.catch(fallback);
+    } catch (e) { fallback(); }
+  }
+
+  return {
+    resume: ensure,
+    hit: () => play('hit'),
+    miss: () => play('miss'),
+    correct: () => play('correct'),
+    wrong: () => play('wrong'),
+    tick: () => play('tick'),
+    sunk: () => play('sunk'),
+    victory: () => play('victory'),
+  };
+})();
+
+/* =====================================================================
+   BACKGROUND MUSIC — bgm.mp3 loop, volume 20%, stopped on victory
+   ===================================================================== */
+let bgm = null;
+function safePlay(el, onFail) {
+  try {
+    const p = el.play();
+    if (p && typeof p.catch === 'function') p.catch(() => { if (onFail) onFail(); });
+  } catch (e) { if (onFail) onFail(); }
+}
+function startBgm() {
+  if (bgm) { safePlay(bgm); return; }
+  try {
+    bgm = new window.Audio('sounds/bgm.mp3');
+    bgm.loop = true;
+    bgm.volume = 0.1;
+    bgm.muted = state.muted;
+    let fellBack = false;
+    const tryRootFallback = () => {
+      if (fellBack) return; fellBack = true;
+      try {
+        bgm = new window.Audio('bgm.mp3');
+        bgm.loop = true;
+        bgm.volume = 0.1;
+        bgm.muted = state.muted;
+        safePlay(bgm); // both sounds/bgm.mp3 and bgm.mp3 missing -> fails silently, no music
+      } catch (e) { /* silent: no bgm asset available */ }
+    };
+    bgm.addEventListener('error', tryRootFallback);
+    safePlay(bgm, tryRootFallback);
+  } catch (e) { /* silent: Audio unsupported or blocked */ }
+}
+function stopBgm() {
+  if (bgm) { try { bgm.pause(); bgm.currentTime = 0; } catch (e) {} }
+}
+
+/* =====================================================================
+   SHIP SVG — top-down silver-metallic warship blueprint art
+   ===================================================================== */
+function shipSVG(ship) {
+  const N = ship.length;
+  const unit = 100;
+  const isH = ship.orientation === 'horizontal';
+  const W = isH ? N * unit : unit;
+  const H = isH ? unit : N * unit;
+  const stroke = '#e2e8f0';
+  let hull, turrets = '', bridge = '';
+  if (isH) {
+    hull = `M4,${H*0.28} L${W-unit*0.42},${H*0.18} L${W-6},${H*0.5} L${W-unit*0.42},${H*0.82} L4,${H*0.72} Z`;
+    for (let i = 0; i < N; i++) {
+      const cx = unit*i + unit*0.32;
+      turrets += `<circle cx="${cx}" cy="${H*0.5}" r="${unit*0.17}" fill="#1e293b" stroke="${stroke}" stroke-width="3"/>
+                  <rect x="${cx-4}" y="${H*0.5-3}" width="${unit*0.3}" height="6" fill="${stroke}"/>`;
+    }
+    bridge = `<rect x="${unit*(N-1)*0.55}" y="${H*0.36}" width="${unit*0.42}" height="${H*0.28}" rx="4" fill="#0f172a" stroke="${stroke}" stroke-width="3"/>`;
+  } else {
+    hull = `M${W*0.28},4 L${W*0.18},${H-unit*0.42} L${W*0.5},${H-6} L${W*0.82},${H-unit*0.42} L${W*0.72},4 Z`;
+    for (let i = 0; i < N; i++) {
+      const cy = unit*i + unit*0.32;
+      turrets += `<circle cx="${W*0.5}" cy="${cy}" r="${unit*0.17}" fill="#1e293b" stroke="${stroke}" stroke-width="3"/>
+                  <rect x="${W*0.5-3}" y="${cy-4}" width="6" height="${unit*0.3}" fill="${stroke}"/>`;
+    }
+    bridge = `<rect x="${W*0.29}" y="${unit*(N-1)*0.55}" width="${W*0.42}" height="${unit*0.28}" rx="4" fill="#0f172a" stroke="${stroke}" stroke-width="3"/>`;
+  }
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="${hull}" fill="url(#hullGrad)" stroke="${stroke}" stroke-width="4"/>
+    ${bridge}
+    ${turrets}
+    <defs><linearGradient id="hullGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#cbd5e1"/><stop offset="45%" stop-color="#64748b"/><stop offset="100%" stop-color="#1e293b"/>
+    </linearGradient></defs>
+  </svg>`;
+}
+
+/* =====================================================================
+   RENDER
+   ===================================================================== */
+const boardEl = document.getElementById('board');
+const scoreboardEl = document.getElementById('scoreboard');
+const fleetPanelEl = document.getElementById('fleetPanel');
+const miniRadarEl = document.getElementById('miniRadar');
+
+function buildBoardSkeleton() {
+  boardEl.innerHTML = '';
+  const corner = document.createElement('div'); boardEl.appendChild(corner);
+  for (let c = 0; c < 10; c++) {
+    const h = document.createElement('div'); h.className = 'hdr'; h.textContent = c + 1;
+    h.style.gridColumn = c + 2; h.style.gridRow = 1;
+    boardEl.appendChild(h);
+  }
+  for (let r = 0; r < 10; r++) {
+    const h = document.createElement('div'); h.className = 'hdr'; h.textContent = ROWS[r];
+    h.style.gridColumn = 1; h.style.gridRow = r + 2;
+    boardEl.appendChild(h);
+  }
+  for (let r = 0; r < 10; r++) {
+    for (let c = 0; c < 10; c++) {
+      const coord = ROWS[r] + (c + 1);
+      const cell = document.createElement('div');
+      cell.className = 'cell playable';
+      cell.dataset.coord = coord;
+      cell.style.gridColumn = c + 2; cell.style.gridRow = r + 2;
+      cell.addEventListener('click', () => onCellClick(coord));
+      boardEl.appendChild(cell);
+    }
+  }
+}
+
+function renderBoard() {
+  document.querySelectorAll('.cell[data-coord]').forEach(cell => {
+    const coord = cell.dataset.coord;
+    const shotState = state.shots[coord];
+    cell.classList.toggle('miss', shotState === 'miss');
+    cell.classList.toggle('hit', shotState === 'hit');
+    cell.classList.toggle('disabled', !!shotState || state.awaitingModal || state.gameOver);
+    cell.classList.toggle('playable', !shotState && !state.awaitingModal && !state.gameOver);
+    cell.innerHTML = '';
+    if (shotState === 'miss') {
+      const p = document.createElement('div'); p.className = 'peg peg-miss'; cell.appendChild(p);
+    } else if (shotState === 'hit') {
+      const p = document.createElement('div'); p.className = 'peg peg-hit'; cell.appendChild(p);
+    }
+    const isShipCell = !!CELL_MAP[coord] && !shotState;
+    cell.classList.toggle('ghost-cell', state.ghost && isShipCell);
+  });
+
+  document.querySelectorAll('.ship-overlay').forEach(el => el.remove());
+  SHIPS.filter(s => s.sunk).forEach(ship => {
+    const el = document.createElement('div');
+    el.className = 'ship-overlay';
+    el.style.gridColumn = `${ship.minC + 2} / ${ship.maxC + 3}`;
+    el.style.gridRow = `${ship.minR + 2} / ${ship.maxR + 3}`;
+    el.innerHTML = shipSVG(ship);
+    boardEl.appendChild(el);
+  });
+}
+
+function renderScoreboard() {
+  scoreboardEl.innerHTML = '';
+  state.teams.forEach((team, i) => {
+    const color = TEAM_COLORS[i];
+    const active = i === state.currentTeamIndex && !state.gameOver;
+    const card = document.createElement('div');
+    card.className = 'glass-cyan rounded-xl px-3 py-2 border-2 flex items-center justify-between gap-2 transition-all';
+    card.style.borderColor = active ? color : 'rgba(100,116,139,.25)';
+    if (active) card.style.boxShadow = `0 0 12px 0 ${color}66`;
+    card.innerHTML = `
+      <div class="min-w-0 flex-1">
+        <div class="flex items-center gap-1.5">
+          <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background:${color}; box-shadow:0 0 6px ${color}"></span>
+          <input data-team="${i}" class="team-name-input font-bold text-xs md:text-sm truncate" style="color:${color}" value="${team.name}" maxlength="20"/>
+        </div>
+        <p class="font-black text-xl md:text-2xl leading-tight" style="color:${color}">${team.score}<span class="text-xs font-bold text-slate-400"> đ</span></p>
+      </div>
+      <div class="flex flex-col gap-1 shrink-0">
+        <button data-adj="${i}" data-delta="50" class="text-[10px] font-black bg-emerald-700/70 hover:bg-emerald-600 text-white rounded px-1.5 py-0.5">+50</button>
+        <button data-adj="${i}" data-delta="-50" class="text-[10px] font-black bg-red-800/70 hover:bg-red-700 text-white rounded px-1.5 py-0.5">-50</button>
+      </div>`;
+    scoreboardEl.appendChild(card);
+  });
+  scoreboardEl.querySelectorAll('input.team-name-input').forEach(inp => {
+    inp.addEventListener('change', (e) => {
+      const idx = +e.target.dataset.team;
+      state.teams[idx].name = e.target.value.trim() || `ĐỘI ${idx+1}`;
+      renderAll();
+    });
+  });
+  scoreboardEl.querySelectorAll('button[data-adj]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = +btn.dataset.adj, delta = +btn.dataset.delta;
+      state.teams[idx].score = Math.max(0, state.teams[idx].score + delta);
+      renderAll();
+    });
+  });
+
+  const t = state.teams[state.currentTeamIndex];
+  const color = TEAM_COLORS[state.currentTeamIndex];
+  const banner = document.getElementById('turnBanner');
+  banner.style.setProperty('--tc', color);
+  banner.style.borderColor = color;
+  document.getElementById('turnTeamName').textContent = t.name;
+  document.getElementById('turnTeamName').style.color = color;
+  document.getElementById('turnIcon').style.color = color;
+
+  const maxScore = Math.max(...state.teams.map(t => t.score));
+  const tiedCount = state.teams.filter(t => t.score === maxScore).length;
+  const btnSudden = document.getElementById('btnSudden');
+  btnSudden.classList.toggle('hidden', !(tiedCount >= 2 && maxScore > 0));
+  btnSudden.classList.toggle('flex', tiedCount >= 2 && maxScore > 0);
+}
+
+function renderFleet() {
+  fleetPanelEl.innerHTML = '';
+  SHIPS.forEach(ship => {
+    const hp = ship.length - ship.hitSet.size;
+    const card = document.createElement('div');
+    card.className = `fleet-card glass-cyan rounded-xl px-3 py-2 border border-cyan-500/30 ${ship.sunk ? 'sunk' : ''}`;
+    const pipsHTML = Array.from({length: ship.length}).map((_,i) =>
+      `<span class="w-3 h-3 rounded-full inline-block ${i < ship.hitSet.size ? 'bg-red-500 shadow-[0_0_6px_#ef4444]' : 'bg-slate-600'}"></span>`
+    ).join('');
+    card.innerHTML = `
+      <div class="flex items-center justify-between mb-1">
+        <span class="font-bold text-xs md:text-sm text-slate-100">${ship.name}</span>
+        <span class="text-[10px] font-black uppercase px-1.5 py-0.5 rounded ${diffBadgeClass(ship.difficulty)}">${ship.difficulty}</span>
+      </div>
+      <div class="flex items-center justify-between">
+        <div class="flex gap-1">${pipsHTML}</div>
+        ${ship.sunk
+          ? `<span class="text-[10px] font-black text-red-400">💥 ĐÃ CHÌM</span>`
+          : `<span class="text-[10px] font-bold text-blue-400">${hp}/${ship.length} ô</span>`}
+      </div>`;
+    fleetPanelEl.appendChild(card);
+  });
+}
+function diffBadgeClass(diff) {
+  if (diff === 'Rất dễ' || diff === 'Dễ') return 'bg-emerald-900/60 text-emerald-300 border border-emerald-500/40';
+  if (diff === 'Khó') return 'bg-red-900/60 text-red-300 border border-red-500/40';
+  return 'bg-amber-900/60 text-amber-300 border border-amber-500/40';
+}
+
+function renderMiniRadar() {
+  miniRadarEl.innerHTML = '';
+  for (let r = 0; r < 10; r++) {
+    for (let c = 0; c < 10; c++) {
+      const coord = ROWS[r] + (c + 1);
+      const s = state.shots[coord];
+      const d = document.createElement('div');
+      d.className = 'rounded-[2px]';
+      if (s === 'hit') d.style.background = '#ef4444';
+      else if (s === 'miss') d.style.background = '#334155';
+      else d.style.background = '#0a1428';
+      d.style.boxShadow = s === 'hit' ? '0 0 3px #ef4444' : 'none';
+      miniRadarEl.appendChild(d);
+    }
+  }
+}
+
+function renderAll() {
+  renderBoard(); renderScoreboard(); renderFleet(); renderMiniRadar();
+  if (window.lucide) lucide.createIcons();
+}
+
+/* =====================================================================
+   GAMEPLAY LOGIC
+   ===================================================================== */
+function advanceTurn() {
+  const pos = state.turnOrder.indexOf(state.currentTeamIndex);
+  state.currentTeamIndex = state.turnOrder[(pos + 1) % state.turnOrder.length];
+}
+
+function onCellClick(coord) {
+  if (state.awaitingModal || state.gameOver || state.shots[coord]) return;
+  Audio_.resume();
+  const shipHit = CELL_MAP[coord];
+  if (!shipHit) {
+    state.shots[coord] = 'miss';
+    Audio_.miss();
+    advanceTurn();
+    renderAll();
+    return;
+  }
+  // HIT
+  state.shots[coord] = 'hit';
+  const ship = SHIPS.find(s => s.id === shipHit.shipId);
+  ship.hitSet.add(coord);
+  state.hitCount++;
+  Audio_.hit();
+  renderAll();
+  openQuestionModal(coord, shipHit, ship);
+}
+
+/* ---------- Question Modal ---------- */
+const qModal = document.getElementById('questionModal');
+const qText = document.getElementById('qText');
+const qCoordBadge = document.getElementById('qCoordBadge');
+const qDifficultyBadge = document.getElementById('qDifficultyBadge');
+const qTimeNum = document.getElementById('qTimerLabel');
+const qTimerBar = document.getElementById('qTimerBar');
+const qAnswerReveal = document.getElementById('qAnswerReveal');
+const qAnswerText = document.getElementById('qAnswerText');
+const qPhaseJudge = document.getElementById('qPhaseJudge');
+const qPhaseSteal = document.getElementById('qPhaseSteal');
+const qPhaseContinue = document.getElementById('qPhaseContinue');
+const stealTeamButtons = document.getElementById('stealTeamButtons');
+
+let currentQuestionCtx = null;
+
+function openQuestionModal(coord, cellData, ship) {
+  state.awaitingModal = true;
+  currentQuestionCtx = { coord, cellData, ship };
+  qText.textContent = cellData.question;
+  qCoordBadge.textContent = `TỌA ĐỘ ${coord}`;
+  qDifficultyBadge.textContent = ship.difficulty.toUpperCase();
+  qDifficultyBadge.className = 'text-[10px] md:text-xs font-black uppercase tracking-widest px-2.5 py-1 rounded-full border ' + diffBadgeClass(ship.difficulty);
+  qAnswerReveal.classList.add('hidden');
+  qPhaseJudge.classList.remove('hidden');
+  qPhaseSteal.classList.add('hidden');
+  qPhaseContinue.classList.add('hidden');
+  qModal.classList.remove('hidden'); qModal.classList.add('flex');
+  startTimer();
+}
+
+function startTimer() {
+  clearInterval(state.timer.handle);
+  state.timer.remaining = 30;
+  updateTimerUI();
+  state.timer.handle = setInterval(() => {
+    state.timer.remaining--;
+    updateTimerUI();
+    if (state.timer.remaining <= 5 && state.timer.remaining > 0) Audio_.tick();
+    if (state.timer.remaining <= 0) {
+      clearInterval(state.timer.handle);
+      Audio_.wrong();
+      enterStealPhase();
+    }
+  }, 1000);
+}
+function updateTimerUI() {
+  const r = state.timer.remaining;
+  qTimeNum.textContent = r;
+  qTimerBar.style.width = `${(r/30)*100}%`;
+  const urgent = r <= 5;
+  qTimeNum.classList.toggle('urgent', urgent);
+  qTimerBar.style.background = urgent ? '#ef4444' : '';
+  qTimerBar.classList.toggle('from-blue-400', !urgent);
+}
+function stopTimer() { clearInterval(state.timer.handle); }
+
+document.getElementById('btnCorrect').addEventListener('click', () => {
+  stopTimer();
+  resolveQuestion(state.currentTeamIndex, 100, true);
+});
+document.getElementById('btnWrong').addEventListener('click', () => {
+  stopTimer();
+  Audio_.wrong();
+  enterStealPhase();
+});
+
+function enterStealPhase() {
+  qPhaseJudge.classList.add('hidden');
+  qPhaseSteal.classList.remove('hidden');
+  stealTeamButtons.innerHTML = '';
+  state.teams.forEach((team, i) => {
+    if (i === state.currentTeamIndex) return;
+    const btn = document.createElement('button');
+    btn.className = 'font-black py-2.5 rounded-xl text-xs md:text-sm border-2 hover:brightness-125 transition';
+    btn.style.color = TEAM_COLORS[i]; btn.style.borderColor = TEAM_COLORS[i]; btn.style.background = TEAM_COLORS[i] + '1a';
+    btn.textContent = `${team.name} ✔`;
+    btn.addEventListener('click', () => resolveQuestion(i, 50, false));
+    stealTeamButtons.appendChild(btn);
+  });
+}
+document.getElementById('btnNoSteal').addEventListener('click', () => {
+  resolveQuestion(null, 0, false);
+});
+
+function resolveQuestion(winnerIndex, points, keepTurn) {
+  const { coord, cellData, ship } = currentQuestionCtx;
+  if (winnerIndex !== null) {
+    state.teams[winnerIndex].score += points;
+    Audio_.correct();
+  }
+
+  qAnswerText.textContent = cellData.answer;
+  qAnswerReveal.classList.remove('hidden');
+  qPhaseSteal.classList.add('hidden');
+  qPhaseJudge.classList.add('hidden');
+  qPhaseContinue.classList.remove('hidden');
+
+  let justSunk = false;
+  if (ship.hitSet.size === ship.length && !ship.sunk) {
+    ship.sunk = true; justSunk = true;
+    if (winnerIndex !== null) state.teams[winnerIndex].score += ship.sunkBonus;
+  }
+
+  if (!keepTurn) advanceTurn();
+  renderAll();
+
+  document.getElementById('btnContinue').onclick = () => {
+    qModal.classList.add('hidden'); qModal.classList.remove('flex');
+    state.awaitingModal = false;
+    if (justSunk) {
+      playSunkCutscene(ship, () => { renderAll(); checkVictory(); });
+    } else {
+      renderAll(); checkVictory();
+    }
+  };
+}
+
+/* ---------- Ship Sunk Cutscene ---------- */
+const cutsceneEl = document.getElementById('cutscene');
+const cutsceneSub = document.getElementById('cutsceneSub');
+function playSunkCutscene(ship, onDone) {
+  state.awaitingModal = true;
+  cutsceneSub.textContent = `HẠ GỤC ${ship.name.toUpperCase()}!`;
+  cutsceneEl.classList.remove('hidden'); cutsceneEl.classList.add('flex');
+  document.body.classList.add('shake');
+  Audio_.sunk();
+  confetti({ particleCount: 140, spread: 90, origin: { y: 0.4 }, colors: ['#ef4444','#f97316','#fbbf24'] });
+  setTimeout(() => confetti({ particleCount: 90, spread: 120, origin: { y: 0.3 }, colors: ['#ef4444','#f97316'] }), 500);
+  setTimeout(() => { document.body.classList.remove('shake'); }, 600);
+  setTimeout(() => {
+    cutsceneEl.classList.add('hidden'); cutsceneEl.classList.remove('flex');
+    state.awaitingModal = false;
+    onDone && onDone();
+  }, 2500);
+}
+
+/* ---------- Victory ---------- */
+const victoryModal = document.getElementById('victoryModal');
+const victoryRanking = document.getElementById('victoryRanking');
+const victoryTieNotice = document.getElementById('victoryTieNotice');
+function checkVictory() {
+  if (state.hitCount >= TOTAL_SHIP_CELLS && !state.gameOver) {
+    state.gameOver = true;
+    stopBgm();
+    Audio_.victory();
+    confetti({ particleCount: 220, spread: 160, origin: { y: 0.5 } });
+    const ranked = state.teams.map((t,i) => ({...t, idx:i})).sort((a,b) => b.score - a.score);
+    const maxScore = ranked[0].score;
+    const tied = ranked.filter(t => t.score === maxScore).length > 1;
+    victoryRanking.innerHTML = ranked.map((t, pos) => `
+      <div class="flex items-center justify-between px-3 py-2 rounded-lg border" style="border-color:${TEAM_COLORS[t.idx]}55; background:${TEAM_COLORS[t.idx]}14">
+        <span class="font-black" style="color:${TEAM_COLORS[t.idx]}">${pos===0 ? '🥇' : pos===1 ? '🥈' : pos===2 ? '🥉' : '　'} ${t.name}</span>
+        <span class="font-black text-lg" style="color:${TEAM_COLORS[t.idx]}">${t.score} đ</span>
+      </div>`).join('');
+    victoryTieNotice.classList.toggle('hidden', !tied);
+    victoryModal.classList.remove('hidden'); victoryModal.classList.add('flex');
+    renderAll();
+  }
+}
+document.getElementById('btnCloseVictory').addEventListener('click', () => {
+  victoryModal.classList.add('hidden'); victoryModal.classList.remove('flex');
+});
+
+/* ---------- Câu hỏi phụ ---------- */
+const suddenModal = document.getElementById('suddenModal');
+document.getElementById('btnSudden').addEventListener('click', () => {
+  const maxScore = Math.max(...state.teams.map(t => t.score));
+  const tiedIdx = state.teams.map((t,i)=>i).filter(i => state.teams[i].score === maxScore);
+  document.getElementById('suddenQuestion').textContent = GAME_DATA.tieBreaker.question;
+  document.getElementById('suddenAnswerReveal').classList.add('hidden');
+  const btnWrap = document.getElementById('suddenTeamButtons');
+  btnWrap.innerHTML = '';
+  tiedIdx.forEach(i => {
+    const btn = document.createElement('button');
+    btn.className = 'font-black py-3 rounded-xl border-2 hover:brightness-125';
+    btn.style.color = TEAM_COLORS[i]; btn.style.borderColor = TEAM_COLORS[i]; btn.style.background = TEAM_COLORS[i]+'1a';
+    btn.textContent = `👑 ${state.teams[i].name} THẮNG`;
+    btn.addEventListener('click', () => {
+      stopBgm();
+      Audio_.victory();
+      confetti({ particleCount: 200, spread: 160, origin: { y: 0.5 } });
+      suddenModal.classList.add('hidden'); suddenModal.classList.remove('flex');
+      renderAll();
+    });
+    btnWrap.appendChild(btn);
+  });
+  suddenModal.classList.remove('hidden'); suddenModal.classList.add('flex');
+});
+document.getElementById('btnRevealSudden').addEventListener('click', () => {
+  document.getElementById('suddenAnswerText').textContent = GAME_DATA.tieBreaker.answer;
+  document.getElementById('suddenAnswerReveal').classList.remove('hidden');
+});
+
+/* =====================================================================
+   MC TOOLS
+   ===================================================================== */
+const btnMute = document.getElementById('btnMute');
+btnMute.addEventListener('click', () => {
+  state.muted = !state.muted;
+  btnMute.innerHTML = `<i data-lucide="${state.muted ? 'volume-x' : 'volume-2'}" class="w-4 h-4 md:w-5 md:h-5"></i>`;
+  document.getElementById('bg-video').muted = true; // background video always muted regardless of SFX mute
+  if (bgm) bgm.muted = state.muted;
+  else if (!state.awaitingModal) startBgm(); // bgm never created yet (e.g. was muted before Start) — create it now
+  lucide.createIcons();
+});
+
+document.getElementById('btnFullscreen').addEventListener('click', () => {
+  if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(()=>{});
+  else document.exitFullscreen();
+});
+
+const resetModal = document.getElementById('resetModal');
+document.getElementById('btnReset').addEventListener('click', () => {
+  resetModal.classList.remove('hidden'); resetModal.classList.add('flex');
+});
+document.getElementById('btnResetCancel').addEventListener('click', () => {
+  resetModal.classList.add('hidden'); resetModal.classList.remove('flex');
+});
+document.getElementById('btnResetConfirm').addEventListener('click', () => {
+  resetModal.classList.add('hidden'); resetModal.classList.remove('flex');
+  resetGame();
+});
+
+function resetGame() {
+  state.teams = [0,1,2,3].map(i => ({ name: `ĐỘI ${i+1}`, score: 0 }));
+  state.turnOrder = [0,1,2,3];
+  state.currentTeamIndex = state.turnOrder[0];
+  state.shots = {}; state.hitCount = 0;
+  state.gameOver = false; state.awaitingModal = true;
+  SHIPS.forEach(s => { s.hitSet = new Set(); s.sunk = false; });
+  victoryModal.classList.add('hidden'); victoryModal.classList.remove('flex');
+  renderIntroOrder();
+  introModal.classList.remove('hidden'); introModal.classList.add('flex');
+  renderAll();
+}
+
+/* Ghost mode — hold "G" */
+const ghostIndicator = document.getElementById('ghostIndicator');
+window.addEventListener('keydown', (e) => {
+  if (e.key.toLowerCase() === 'g' && !e.repeat) {
+    state.ghost = true;
+    ghostIndicator.classList.remove('hidden');
+    renderAll();
+  }
+});
+window.addEventListener('keyup', (e) => {
+  if (e.key.toLowerCase() === 'g') {
+    state.ghost = false;
+    ghostIndicator.classList.add('hidden');
+    renderAll();
+  }
+});
+window.addEventListener('blur', () => { state.ghost = false; ghostIndicator.classList.add('hidden'); renderAll(); });
+
+/* =====================================================================
+   BACKGROUND VIDEO AUTOPLAY HANDLING
+   ===================================================================== */
+const bgVid = document.getElementById('bg-video');
+if (bgVid) {
+  bgVid.play().catch(() => {
+    document.addEventListener('click', () => bgVid.play(), { once: true });
+  });
+}
+
+/* =====================================================================
+   INTRO / START MODAL
+   ===================================================================== */
+const introModal = document.getElementById('introModal');
+const introOrderList = document.getElementById('introOrderList');
+function renderIntroOrder() {
+  introOrderList.innerHTML = '';
+  state.turnOrder.forEach((teamIdx, pos) => {
+    const color = TEAM_COLORS[teamIdx];
+    const row = document.createElement('div');
+    row.className = 'flex items-center gap-2 rounded-lg px-3 py-2 border border-slate-600/40 bg-slate-800/40';
+    row.innerHTML = `
+      <span class="font-black text-slate-400 w-5 text-center">${pos + 1}</span>
+      <span class="w-3 h-3 rounded-full shrink-0" style="background:${color}"></span>
+      <span class="flex-1 font-bold text-sm truncate" style="color:${color}">${state.teams[teamIdx].name}${pos === 0 ? ' <span class="text-[10px] text-amber-300 font-black">(ĐI TRƯỚC)</span>' : ''}</span>
+      <button type="button" data-dir="up" data-pos="${pos}" class="p-1 rounded hover:bg-white/10 text-slate-300 disabled:opacity-20 disabled:cursor-not-allowed" ${pos === 0 ? 'disabled' : ''}><i data-lucide="chevron-up" class="w-4 h-4"></i></button>
+      <button type="button" data-dir="down" data-pos="${pos}" class="p-1 rounded hover:bg-white/10 text-slate-300 disabled:opacity-20 disabled:cursor-not-allowed" ${pos === state.turnOrder.length - 1 ? 'disabled' : ''}><i data-lucide="chevron-down" class="w-4 h-4"></i></button>
+    `;
+    introOrderList.appendChild(row);
+  });
+  introOrderList.querySelectorAll('button[data-dir]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const pos = +btn.dataset.pos;
+      const swapWith = btn.dataset.dir === 'up' ? pos - 1 : pos + 1;
+      if (swapWith < 0 || swapWith >= state.turnOrder.length) return;
+      [state.turnOrder[pos], state.turnOrder[swapWith]] = [state.turnOrder[swapWith], state.turnOrder[pos]];
+      renderIntroOrder();
+    });
+  });
+  if (window.lucide) lucide.createIcons();
+}
+document.getElementById('btnStartGame').addEventListener('click', () => {
+  introModal.classList.add('hidden'); introModal.classList.remove('flex');
+  state.awaitingModal = false;
+  state.currentTeamIndex = state.turnOrder[0];
+  Audio_.resume();
+  startBgm();
+  renderAll();
+});
+
+/* =====================================================================
+   INIT
+   ===================================================================== */
+buildBoardSkeleton();
+renderIntroOrder();
+renderAll();
+if (window.lucide) lucide.createIcons();
+</script>
+</body>
+</html>
